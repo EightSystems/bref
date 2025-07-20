@@ -300,10 +300,10 @@ final class LambdaRuntime
     {
         if ($this->curlStreamedHandleResult === null) {
             $this->curlStreamedHandleResult = curl_init();
-            curl_setopt($this->curlStreamedHandleResult, CURLOPT_POST, true);
+            curl_setopt($this->curlStreamedHandleResult, CURLOPT_UPLOAD, true);
+            curl_setopt($this->curlStreamedHandleResult, CURLOPT_CUSTOMREQUEST, 'POST');
             curl_setopt($this->curlStreamedHandleResult, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
             curl_setopt($this->curlStreamedHandleResult, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($this->curlStreamedHandleResult, CURLOPT_UPLOAD, true);
             curl_setopt($this->curlStreamedHandleResult, CURLOPT_INFILESIZE, -1);
         }
 
@@ -319,6 +319,8 @@ final class LambdaRuntime
             $this->curlStreamedHandleResult,
             CURLOPT_READFUNCTION,
             function () use (&$data) {
+                $this->logError(new \Exception("Reading chunk"), "Chunk...");
+
                 if ($data->valid()) {
                     $dataBuffer = $data->current();
                     $data->next();
@@ -347,7 +349,7 @@ final class LambdaRuntime
                 $errorMessage = "{$error['errorType']}: {$error['errorMessage']}";
             } catch (JsonException) {
                 // In case we didn't get any JSON
-                $errorMessage = 'unknown error';
+                $errorMessage = 'unknown error: ' . $body;
             }
 
             throw new Exception("Error $statusCode while calling the Lambda runtime API: $errorMessage");

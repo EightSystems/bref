@@ -315,21 +315,20 @@ final class LambdaRuntime
             ...$headers,
         ]);
 
+        $buffer = '';
         curl_setopt(
             $this->curlStreamedHandleResult,
             CURLOPT_READFUNCTION,
-            function () use (&$data) {
-                $this->logError(new \Exception('Reading chunk'), 'Chunk...');
-
-                if ($data->valid()) {
-                    $dataBuffer = $data->current();
+            function ($ch, $fd, $length) use (&$data, &$buffer) {
+                while (strlen($buffer) < $length && $data->valid()) {
+                    $buffer .= (string) $data->current();
                     $data->next();
-
-                    return $dataBuffer;
                 }
 
-                // Return an empty string when the generator is exhausted.
-                return '';
+                $chunk = substr($buffer, 0, $length);
+                $buffer = substr($buffer, strlen($chunk));
+
+                return $chunk;
             }
         );
 
@@ -349,7 +348,7 @@ final class LambdaRuntime
                 $errorMessage = "{$error['errorType']}: {$error['errorMessage']}";
             } catch (JsonException) {
                 // In case we didn't get any JSON
-                $errorMessage = 'unknown error: ' . $body;
+                $errorMessage = 'unknown error';
             }
 
             throw new Exception("Error $statusCode while calling the Lambda runtime API: $errorMessage");

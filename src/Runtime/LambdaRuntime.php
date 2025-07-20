@@ -8,6 +8,7 @@ use Bref\Context\ContextBuilder;
 use Bref\Event\Handler;
 use CurlHandle;
 use Exception;
+use Generator;
 use JsonException;
 use Psr\Http\Server\RequestHandlerInterface;
 use RuntimeException;
@@ -39,6 +40,8 @@ final class LambdaRuntime
     private $curlHandleNext;
     /** @var resource|CurlHandle|null */
     private $curlHandleResult;
+    /** @var resource|CurlHandle|null */
+    private $curlStreamedHandleResult;
     private string $apiUrl;
     private Invoker $invoker;
     private string $layer;
@@ -201,7 +204,12 @@ final class LambdaRuntime
     private function sendResponse(string $invocationId, mixed $responseData): void
     {
         $url = "http://$this->apiUrl/2018-06-01/runtime/invocation/$invocationId/response";
-        $this->postJson($url, $responseData);
+
+        if ($responseData instanceof Generator) {
+            $this->postStreamed($url, $responseData);
+        } else {
+            $this->postJson($url, $responseData);
+        }
     }
 
     /**
@@ -286,6 +294,59 @@ final class LambdaRuntime
      * @throws Exception
      * @throws ResponseTooBig
      */
+    private function postStreamed(string $url, Generator $data, array $headers = []): void
+    {
+        if ($this->curlStreamedHandleResult === null) {
+            $this->curlStreamedHandleResult = curl_init();
+            curl_setopt($this->curlStreamedHandleResult, CURLOPT_CUSTOMREQUEST, 'POST');
+        }
+
+        curl_setopt($this->curlStreamedHandleResult, CURLOPT_URL, $url);
+        curl_setopt($this->curlStreamedHandleResult, CURLOPT_HTTPHEADER, [
+            'Lambda-Runtime-Function-Response-Mode: streaming',
+            'Content-Type: application/vnd.awslambda.http-integration-response',
+            'Transfer-Encoding: chunked',
+            ...$headers,
+        ]);
+
+        curl_setopt($this->curlStreamedHandleResult, CURLOPT_WRITEFUNCTION, function () use (&$data) {
+            if ($data->valid()) {
+                $chunk = $data->current();
+                $data->next();
+
+                // Return the chunk to be written to the stream.
+                return $chunk;
+            }
+
+            // Return an empty string when the generator is exhausted.
+            return '';
+        });
+
+        curl_setopt($this->curlStreamedHandleResult, CURLOPT_READFUNCTION, function () {
+            // We just need this to be a valid callback. The real work is in WRITEFUNCTION.
+            return '';
+        });
+
+        $hasCompleted = curl_exec($this->curlStreamedHandleResult);
+
+        $statusCode = curl_getinfo($this->curlStreamedHandleResult, CURLINFO_HTTP_CODE);
+        if ($statusCode >= 400 || $hasCompleted === false) {
+            // Re-open the connection in case of failure to start from a clean state
+            $this->closeCurlStreamedHandleResult();
+
+            if ($statusCode === 413) {
+                throw new ResponseTooBig;
+            }
+
+            throw new Exception("Error $statusCode while calling the Lambda runtime API: unknown error");
+        }
+    }
+
+    /**
+     * @param string[] $headers
+     * @throws Exception
+     * @throws ResponseTooBig
+     */
     private function postJson(string $url, mixed $data, array $headers = []): void
     {
         /** @noinspection JsonEncodingApiUsageInspection */
@@ -347,6 +408,14 @@ final class LambdaRuntime
         if ($this->curlHandleResult !== null) {
             curl_close($this->curlHandleResult);
             $this->curlHandleResult = null;
+        }
+    }
+
+    private function closeCurlStreamedHandleResult(): void
+    {
+        if ($this->curlStreamedHandleResult !== null) {
+            curl_close($this->curlStreamedHandleResult);
+            $this->curlStreamedHandleResult = null;
         }
     }
 

@@ -51,14 +51,13 @@ final class HttpResponse
 
         if ($isStreamedMode) {
             yield json_encode([
-                'isBase64Encoded' => $base64Encoding,
                 'statusCode' => $this->statusCode,
                 $headersKey => $headers,
             ]);
 
             yield "\0\0\0\0\0\0\0\0";
 
-            yield $base64Encoding ? base64_encode($this->body) : $this->body;
+            yield $this->body;
         } else {
             return [
                 'isBase64Encoded' => $base64Encoding,
@@ -98,14 +97,13 @@ final class HttpResponse
         if ($isStreamedMode) {
             yield json_encode([
                 'cookies' => $cookies,
-                'isBase64Encoded' => $base64Encoding,
                 'statusCode' => $this->statusCode,
                 'headers' => $headers,
             ]);
 
             yield "\0\0\0\0\0\0\0\0";
 
-            yield $base64Encoding ? base64_encode($this->body) : $this->body;
+            yield $this->body;
         } else {
             return [
                 'cookies' => $cookies,

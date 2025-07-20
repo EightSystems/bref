@@ -23,8 +23,9 @@ final class StreamedHttpResponse
         $this->statusCode = $statusCode;
     }
 
-    public function toApiGatewayFormat(bool $multiHeaders = false): Generator
+    public function toApiGatewayFormat(bool $multiHeaders = false): array|\Generator
     {
+        $isStreamedMode = (bool) getenv('BREF_STREAMED_MODE');
         $base64Encoding = (bool) getenv('BREF_BINARY_RESPONSES');
 
         $headers = [];
@@ -49,26 +50,42 @@ final class StreamedHttpResponse
 
         // This is the format required by the AWS_PROXY lambda integration
         // See https://stackoverflow.com/questions/43708017/aws-lambda-api-gateway-error-malformed-lambda-proxy-response
-        yield json_encode([
-            'isBase64Encoded' => $base64Encoding,
-            'statusCode' => $this->statusCode,
-            $headersKey => $headers,
-        ]);
 
-        yield "\0\0\0\0\0\0\0\0";
+        if ($isStreamedMode) {
+            yield json_encode([
+                'statusCode' => $this->statusCode,
+                $headersKey => $headers,
+            ]);
 
-        foreach ($this->body as $dataChunk) {
-            $dataChunk = $base64Encoding ? base64_encode($dataChunk) : $dataChunk;
+            yield "\0\0\0\0\0\0\0\0";
 
-            yield $dataChunk;
+            foreach ($this->body as $dataChunk) {
+                yield $dataChunk;
+            }
+        } else {
+            $dataChunk = '';
+
+            while ($this->body->valid()) {
+                $dataChunk .= $this->body->current();
+
+                $this->body->next();
+            }
+
+            return [
+                'isBase64Encoded' => $base64Encoding,
+                'statusCode' => $this->statusCode,
+                $headersKey => $headers,
+                'body' => $base64Encoding ? base64_encode($dataChunk) : $dataChunk,
+            ];
         }
     }
 
     /**
      * See https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-develop-integrations-lambda.html#http-api-develop-integrations-lambda.response
      */
-    public function toApiGatewayFormatV2(): Generator
+    public function toApiGatewayFormatV2(): array|\Generator
     {
+        $isStreamedMode = (bool) getenv('BREF_STREAMED_MODE');
         $base64Encoding = (bool) getenv('BREF_BINARY_RESPONSES');
 
         $headers = [];
@@ -89,19 +106,34 @@ final class StreamedHttpResponse
         // serialized to `[]` (we want `{}`) so we force it to an empty object.
         $headers = empty($headers) ? new \stdClass : $headers;
 
-        yield json_encode([
-            'cookies' => $cookies,
-            'isBase64Encoded' => $base64Encoding,
-            'statusCode' => $this->statusCode,
-            'headers' => $headers,
-        ]);
+        if ($isStreamedMode) {
+            yield json_encode([
+                'cookies' => $cookies,
+                'statusCode' => $this->statusCode,
+                'headers' => $headers,
+            ]);
 
-        yield "\0\0\0\0\0\0\0\0";
+            yield "\0\0\0\0\0\0\0\0";
 
-        foreach ($this->body as $dataChunk) {
-            $dataChunk = $base64Encoding ? base64_encode($dataChunk) : $dataChunk;
+            foreach ($this->body as $dataChunk) {
+                yield $dataChunk;
+            }
+        } else {
+            $dataChunk = '';
 
-            yield $dataChunk;
+            while ($this->body->valid()) {
+                $dataChunk .= $this->body->current();
+
+                $this->body->next();
+            }
+
+            return [
+                'cookies' => $cookies,
+                'isBase64Encoded' => $base64Encoding,
+                'statusCode' => $this->statusCode,
+                'headers' => $headers,
+                'body' => $base64Encoding ? base64_encode($dataChunk) : $dataChunk,
+            ];
         }
     }
 

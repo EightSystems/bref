@@ -323,7 +323,7 @@ final class LambdaRuntime
             function ($ch, $fp, $len) use (&$data, &$dataBuffer, &$contentPos) {
                 if (strlen($dataBuffer) >= $contentPos + $len) {
                     $buffer = substr($dataBuffer, $contentPos, $len);
-                    $contentPos += $len;
+                    $contentPos += strlen($buffer);
 
                     return $buffer;
                 } elseif ($data->valid()) {
@@ -331,7 +331,7 @@ final class LambdaRuntime
                     $data->next();
 
                     $buffer = substr($dataBuffer, $contentPos, $len);
-                    $contentPos += $len;
+                    $contentPos += strlen($buffer);
 
                     return $buffer;
                 }

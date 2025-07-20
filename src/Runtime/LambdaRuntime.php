@@ -319,7 +319,7 @@ final class LambdaRuntime
             $this->curlStreamedHandleResult,
             CURLOPT_READFUNCTION,
             function () use (&$data) {
-                $this->logError(new \Exception("Reading chunk"), "Chunk...");
+                $this->logError(new \Exception('Reading chunk'), 'Chunk...');
 
                 if ($data->valid()) {
                     $dataBuffer = $data->current();

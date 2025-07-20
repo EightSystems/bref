@@ -360,9 +360,14 @@ final class LambdaRuntime
                     if ($buffer === '') {
                         if ($fiber->isStarted() || $fiber->isSuspended()) {
                             $fiberChunk = $fiber->resume();
-                            if ($fiberChunk !== PHP_INT_MIN) {
-                                $buffer .= $fiberChunk;
-                            }
+                        } elseif (! $fiber->isTerminated()) {
+                            $fiberChunk = $fiber->start();
+                        } else {
+                            $fiberChunk = PHP_INT_MIN;
+                        }
+
+                        if ($fiberChunk !== PHP_INT_MIN) {
+                            $buffer .= $fiberChunk;
                         }
                     }
 

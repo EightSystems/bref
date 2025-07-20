@@ -60,10 +60,8 @@ final class StreamedHttpResponse
         foreach ($this->body as $dataChunk) {
             $dataChunk = $base64Encoding ? base64_encode($dataChunk) : $dataChunk;
 
-            yield dechex(strlen($dataChunk)) . "\r\n" . $dataChunk . "\r\n";
+            yield $dataChunk;
         }
-
-        yield "0\r\n\r\n";
     }
 
     /**
@@ -103,10 +101,8 @@ final class StreamedHttpResponse
         foreach ($this->body as $dataChunk) {
             $dataChunk = $base64Encoding ? base64_encode($dataChunk) : $dataChunk;
 
-            yield dechex(strlen($dataChunk)) . "\r\n" . $dataChunk . "\r\n";
+            yield $dataChunk;
         }
-
-        yield "0\r\n\r\n";
     }
 
     /**

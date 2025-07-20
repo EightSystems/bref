@@ -315,22 +315,55 @@ final class LambdaRuntime
             ...$headers,
         ]);
 
-        $buffer = '';
-        curl_setopt(
-            $this->curlStreamedHandleResult,
-            CURLOPT_READFUNCTION,
-            function ($ch, $fd, $length) use (&$data, &$buffer) {
-                if (strlen($buffer) < $length && $data->valid()) {
-                    $buffer .= (string) $data->current();
-                    $data->next();
+        if (PHP_VERSION_ID < 80100) {
+            $buffer = '';
+            curl_setopt(
+                $this->curlStreamedHandleResult,
+                CURLOPT_READFUNCTION,
+                function ($ch, $fd, $length) use (&$data, &$buffer) {
+                    if (strlen($buffer) < $length && $data->valid()) {
+                        $buffer .= (string) $data->current();
+                        $data->next();
+                    }
+
+                    $chunk = substr($buffer, 0, $length);
+                    $buffer = substr($buffer, strlen($chunk));
+
+                    return $chunk;
                 }
+            );
+        } else {
+            $buffer = '';
+            $fiber = new \Fiber(
+                function () use (&$data): void {
+                    foreach ($data as $dataChunk) {
+                        \Fiber::suspend((string) $dataChunk);
+                    }
 
-                $chunk = substr($buffer, 0, $length);
-                $buffer = substr($buffer, strlen($chunk));
+                    \Fiber::suspend(PHP_INT_MIN);
+                }
+            );
 
-                return $chunk;
-            }
-        );
+            curl_setopt(
+                $this->curlStreamedHandleResult,
+                CURLOPT_READFUNCTION,
+                function ($ch, $fd, $length) use (&$fiber, &$buffer) {
+                    if ($buffer === '') {
+                        if ($fiber->isStarted() || $fiber->isSuspended()) {
+                            $fiberChunk = $fiber->resume();
+                            if ($fiberChunk !== PHP_INT_MIN) {
+                                $buffer .= $fiberChunk;
+                            }
+                        }
+                    }
+
+                    $chunk = substr($buffer, 0, $length);
+                    $buffer = substr($buffer, strlen($chunk));
+
+                    return $chunk;
+                }
+            );
+        }
 
         $body = curl_exec($this->curlStreamedHandleResult);
 

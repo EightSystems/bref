@@ -323,6 +323,11 @@ final class LambdaRuntime
                 function ($ch, $fd, $length) use (&$data, &$buffer) {
                     if (strlen($buffer) < $length && $data->valid()) {
                         $buffer .= (string) $data->current();
+
+                        /*
+                        As this method needs to return an string, we need to wait for the next generator item to yield.
+                        This can lead to the initial part of the buffer taking longer to load if the next chunk takes longer.
+                        */
                         $data->next();
                     }
 
@@ -334,6 +339,10 @@ final class LambdaRuntime
             );
         } else {
             $buffer = '';
+            /*
+            * We use Fibers so we can suspend the yields and read data as needed.
+            * That way we don't block the response as more data comes.
+            */
             $fiber = new \Fiber(
                 function () use (&$data): void {
                     foreach ($data as $dataChunk) {

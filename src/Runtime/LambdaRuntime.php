@@ -320,7 +320,7 @@ final class LambdaRuntime
             $this->curlStreamedHandleResult,
             CURLOPT_READFUNCTION,
             function ($ch, $fd, $length) use (&$data, &$buffer) {
-                while (strlen($buffer) < $length && $data->valid()) {
+                if (strlen($buffer) < $length && $data->valid()) {
                     $buffer .= (string) $data->current();
                     $data->next();
                 }

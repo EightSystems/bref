@@ -314,18 +314,32 @@ final class LambdaRuntime
             ...$headers,
         ]);
 
-        curl_setopt($this->curlStreamedHandleResult, CURLOPT_READFUNCTION, function () use (&$data) {
-            if ($data->valid()) {
-                $chunk = $data->current();
-                $data->next();
+        $dataBuffer = '';
+        $contentPos = 0;
 
-                // Return the chunk to be written to the stream.
-                return $chunk;
+        curl_setopt(
+            $this->curlStreamedHandleResult,
+            CURLOPT_READFUNCTION,
+            function ($ch, $fp, $len) use (&$data, &$dataBuffer, &$contentPos) {
+                if (strlen($dataBuffer) >= $contentPos + $len) {
+                    $buffer = substr($dataBuffer, $contentPos, $len);
+                    $contentPos += $len;
+
+                    return $buffer;
+                } elseif ($data->valid()) {
+                    $dataBuffer .= $data->current();
+                    $data->next();
+
+                    $buffer = substr($dataBuffer, $contentPos, $len);
+                    $contentPos += $len;
+
+                    return $buffer;
+                }
+
+                // Return an empty string when the generator is exhausted.
+                return '';
             }
-
-            // Return an empty string when the generator is exhausted.
-            return '';
-        });
+        );
 
         $body = curl_exec($this->curlStreamedHandleResult);
 

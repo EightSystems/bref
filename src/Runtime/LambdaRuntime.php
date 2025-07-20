@@ -300,7 +300,10 @@ final class LambdaRuntime
     {
         if ($this->curlStreamedHandleResult === null) {
             $this->curlStreamedHandleResult = curl_init();
-            curl_setopt($this->curlStreamedHandleResult, CURLOPT_CUSTOMREQUEST, 'POST');
+            curl_setopt($this->curlStreamedHandleResult, CURLOPT_POST, true);
+            curl_setopt($this->curlStreamedHandleResult, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+            curl_setopt($this->curlHandleResult, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($this->curlHandleResult, CURLOPT_UPLOAD, true);
         }
 
         curl_setopt($this->curlStreamedHandleResult, CURLOPT_URL, $url);
@@ -311,7 +314,7 @@ final class LambdaRuntime
             ...$headers,
         ]);
 
-        curl_setopt($this->curlStreamedHandleResult, CURLOPT_WRITEFUNCTION, function () use (&$data) {
+        curl_setopt($this->curlStreamedHandleResult, CURLOPT_READFUNCTION, function () use (&$data) {
             if ($data->valid()) {
                 $chunk = $data->current();
                 $data->next();
@@ -324,15 +327,10 @@ final class LambdaRuntime
             return '';
         });
 
-        curl_setopt($this->curlStreamedHandleResult, CURLOPT_READFUNCTION, function () {
-            // We just need this to be a valid callback. The real work is in WRITEFUNCTION.
-            return '';
-        });
-
-        $hasCompleted = curl_exec($this->curlStreamedHandleResult);
+        $body = curl_exec($this->curlStreamedHandleResult);
 
         $statusCode = curl_getinfo($this->curlStreamedHandleResult, CURLINFO_HTTP_CODE);
-        if ($statusCode >= 400 || $hasCompleted === false) {
+        if ($statusCode >= 400) {
             // Re-open the connection in case of failure to start from a clean state
             $this->closeCurlStreamedHandleResult();
 
@@ -340,7 +338,15 @@ final class LambdaRuntime
                 throw new ResponseTooBig;
             }
 
-            throw new Exception("Error $statusCode while calling the Lambda runtime API: unknown error");
+            try {
+                $error = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+                $errorMessage = "{$error['errorType']}: {$error['errorMessage']}";
+            } catch (JsonException) {
+                // In case we didn't get any JSON
+                $errorMessage = 'unknown error';
+            }
+
+            throw new Exception("Error $statusCode while calling the Lambda runtime API: $errorMessage");
         }
     }
 

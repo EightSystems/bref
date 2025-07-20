@@ -302,8 +302,9 @@ final class LambdaRuntime
             $this->curlStreamedHandleResult = curl_init();
             curl_setopt($this->curlStreamedHandleResult, CURLOPT_POST, true);
             curl_setopt($this->curlStreamedHandleResult, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
-            curl_setopt($this->curlHandleResult, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($this->curlHandleResult, CURLOPT_UPLOAD, true);
+            curl_setopt($this->curlStreamedHandleResult, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($this->curlStreamedHandleResult, CURLOPT_UPLOAD, true);
+            curl_setopt($this->curlStreamedHandleResult, CURLOPT_INFILESIZE, -1);
         }
 
         curl_setopt($this->curlStreamedHandleResult, CURLOPT_URL, $url);
@@ -314,26 +315,15 @@ final class LambdaRuntime
             ...$headers,
         ]);
 
-        $dataBuffer = '';
-        $contentPos = 0;
-
         curl_setopt(
             $this->curlStreamedHandleResult,
             CURLOPT_READFUNCTION,
-            function ($ch, $fp, $len) use (&$data, &$dataBuffer, &$contentPos) {
-                if (strlen($dataBuffer) >= $contentPos + $len) {
-                    $buffer = substr($dataBuffer, $contentPos, $len);
-                    $contentPos += strlen($buffer);
-
-                    return $buffer;
-                } elseif ($data->valid()) {
-                    $dataBuffer .= $data->current();
+            function () use (&$data) {
+                if ($data->valid()) {
+                    $dataBuffer = $data->current();
                     $data->next();
 
-                    $buffer = substr($dataBuffer, $contentPos, $len);
-                    $contentPos += strlen($buffer);
-
-                    return $buffer;
+                    return $dataBuffer;
                 }
 
                 // Return an empty string when the generator is exhausted.

@@ -100,6 +100,8 @@ final class LambdaRuntime
 
             $this->sendResponse($context->getAwsRequestId(), $result);
         } catch (Throwable $e) {
+            $this->logError($e, $context->getAwsRequestId());
+
             $this->signalFailure($context->getAwsRequestId(), $e);
 
             try {
